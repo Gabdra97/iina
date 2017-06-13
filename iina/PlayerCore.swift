@@ -604,6 +604,19 @@ class PlayerCore: NSObject {
     info.disableOSDForFileLoading = true
     guard let path = mpvController.getString(MPVProperty.path) else { return }
     info.currentURL = URL(fileURLWithPath: path)
+    // Generate thumbnails
+    info.thumbnailsReady = false
+    if let cacheName = info.mpvMd5, ThumbnailCache.exists(name: cacheName) {
+      backgroundQueue.async {
+        if let thumbnails = ThumbnailCache.read(from: cacheName) {
+          self.info.thumbnails = thumbnails
+          self.info.thumbnailsReady = true
+        }
+      }
+    } else {
+      ffmpegController.generateThumbnail(forFile: path)
+    }
+    // Auto load
     backgroundQueueTicket += 1
     let currentFileIsOpenedManually = info.currentFileIsOpenedManually
     let currentTicket = backgroundQueueTicket
@@ -623,9 +636,7 @@ class PlayerCore: NSObject {
         self.setTrack(1, forType: .sub)
       }
     }
-    // Generate thumbnails
-    info.thumbnailsReady = false
-    ffmpegController.generateThumbnail(forFile: path)
+
   }
 
   /** This function is called right after file loaded. Should load all meta info here. */
@@ -1147,6 +1158,11 @@ extension PlayerCore: FFmpegControllerDelegate {
     if success {
       info.thumbnailsReady = true
       info.thumbnails = thumbnails
+      if let cacheName = info.mpvMd5 {
+        backgroundQueue.async {
+          ThumbnailCache.write(thumbnails: self.info.thumbnails, to: cacheName)
+        }
+      }
     }
   }
 }
